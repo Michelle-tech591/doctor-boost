@@ -23,6 +23,34 @@ jobs:
           set -o pipefail
           bun run build 2>&1 | tee build.log
 
+      - name: Verify font assets emitted
+        run: |
+          set -euo pipefail
+          # Locate the built client assets directory (TanStack Start output)
+          OUT_DIR=""
+          for candidate in dist/client/assets .output/public/assets dist/assets .output/public/_build/assets; do
+            if [ -d "$candidate" ]; then OUT_DIR="$candidate"; break; fi
+          done
+          if [ -z "$OUT_DIR" ]; then
+            echo "❌ Could not find build output assets directory"
+            find dist .output -maxdepth 4 -type d 2>/dev/null || true
+            exit 1
+          fi
+          echo "Scanning $OUT_DIR for font files..."
+          FONT_COUNT=$(find "$OUT_DIR" -type f \( -iname '*.woff2' -o -iname '*.woff' -o -iname '*.ttf' -o -iname '*.otf' \) | wc -l)
+          echo "Found $FONT_COUNT font files"
+          if [ "$FONT_COUNT" -eq 0 ]; then
+            echo "❌ No font assets were emitted — @fontsource imports may be missing or unresolved"
+            exit 1
+          fi
+          # Verify built CSS references at least one @font-face
+          if ! grep -rlE '@font-face' "$OUT_DIR" >/dev/null; then
+            echo "❌ No @font-face declarations found in built CSS"
+            exit 1
+          fi
+          echo "✅ Font assets verified"
+
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
